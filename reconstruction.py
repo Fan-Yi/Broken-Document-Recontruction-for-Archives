@@ -14,6 +14,8 @@ overlap_tolerance = 0.05
 match_len_tolerance = 0.05
 mini_angle = 5
 center_dist_bound = 10
+closeness_bound_for_center_dist = 1
+closeness_bound_for_perp_dist = 0.1
 FLIP_ALLOWED_MODE = False
 
 # for simple shapes
@@ -51,6 +53,7 @@ current_matched_fragment_pile = list()
 
 fragment_flipped = list()
 
+map_to_perimeter = dict()
 perimeter_list = list()
 barycenter_and_x_to_angle_dict = dict()
 
@@ -58,6 +61,7 @@ fragment_barycenter_list = list()
 flipped_fragment_barycenter_list = list()
 
 tested_case_set = set()
+
 
 def enlarged_by_a_factor(binary, mul):
     return binary[0] * mul, binary[1] * mul
@@ -203,10 +207,12 @@ def obtain_perimeter_and_original_and_flipped_barycenter_x_to_angle_info(cnt_lis
             x2 = curve_segment_ik[1][0][0]
             y2 = curve_segment_ik[1][0][1]
 
-            perimeter = calculateDistance(x1, y1, x2, y2)
+            perimeter = euclidean_distance(x1, y1, x2, y2)
             perimeter_list.append((tag_str, i, k, perimeter))
             if FLIP_ALLOWED_MODE:
                 perimeter_list.append((flipped_tag_str, i, k, perimeter))
+
+            map_to_perimeter[(i, k)] = perimeter
 
             original_barycenter = ((x1 + x2) / 2, (y1 + y2) / 2)
 
@@ -246,25 +252,37 @@ def segment_close(curve_segment_1, curve_segment_2, closeness_bound):
     x22 = curve_segment_2[1][0][0]
     y22 = curve_segment_2[1][0][1]
 
-    dist_1 = calculateDistance(x11, y11, x12, y12)
+    dist_1 = euclidean_distance(x11, y11, x12, y12)
     # print("compute dist_1 from: ", x11, y11, x12, y12)
-    dist_2 = calculateDistance(x21, y21, x22, y22)
+    dist_2 = euclidean_distance(x21, y21, x22, y22)
     # print("compute dist_2 from: ", x21, y21, x22, y22)
-    # print("dist_1: ", dist_1)
-    # print("dist_2: ", dist_2)
-    center_1 = [(x11 + x12) / 2, (y11 + y12) / 2]
-    center_2 = [(x21 + x22) / 2, (y21 + y22) / 2]
-    center_dist = calculateDistance(center_1[0], center_1[1], center_2[0], center_2[1])
-    # print("center_dist: ", center_dist)
+    print("dist_1: ", round(dist_1))
+    print("dist_2: ", round(dist_2))
+    center_1 = ((x11 + x12) / 2, (y11 + y12) / 2)
+    center_2 = ((x21 + x22) / 2, (y21 + y22) / 2)
+    center_dist = euclidean_distance(center_1[0], center_1[1], center_2[0], center_2[1])
+    print("center_dist: ", round(center_dist))
 
-    if center_dist < closeness_bound * dist_1 / 2 and center_dist < closeness_bound * dist_2 / 2:
+    if center_dist < closeness_bound_for_center_dist * dist_1 / 2 and center_dist < closeness_bound_for_center_dist * dist_2 / 2:
         # if center_dist < center_dist_bound:
         return True
-    else:
-        return False
+
+    print("perpendicular distances:")
+    print(round(perpendicular_distance_between_point_to_two_point_line(center_1, (x21, y21), (x22, y22))))
+    print(round(perpendicular_distance_between_point_to_two_point_line(center_2, (x11, y11), (x12, y12))))
+
+    if perpendicular_distance_between_point_to_two_point_line(
+            center_1, (x21, y21), (x22, y22)) < closeness_bound_for_perp_dist * dist_1 / 2:
+        return True
+
+    if perpendicular_distance_between_point_to_two_point_line(
+            center_2, (x11, y11), (x12, y12)) < closeness_bound_for_perp_dist * dist_2 / 2:
+        return True
+
+    return False
 
 
-def calculateDistance(x1, y1, x2, y2):
+def euclidean_distance(x1, y1, x2, y2):
     return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
 
@@ -334,8 +352,29 @@ def vector_inner_angle(v1, v2):
     return theta
 
 
+def coefficients_of_a_line_passing_thru_two_points(p1, p2):
+    x1, y1 = p1
+    x2, y2 = p2
+    a = y2 - y1
+    b = x1 - x2
+    c = -(a * x1 + b * y1)
+    return a, b, c
+
+
+def perpendicular_distance_between_point_line(p, line):
+    x0, y0 = p
+    a, b, c = line
+    d = abs((a * x0 + b * y0 + c)) / (math.sqrt(a * a + b * b))
+    return d
+
+
+def perpendicular_distance_between_point_to_two_point_line(p, p1, p2):
+    a, b, c = coefficients_of_a_line_passing_thru_two_points(p1, p2)
+    d = perpendicular_distance_between_point_line(p, (a, b, c))
+    return d
+
+
 def fitness_of_a_match(cnt1, cnt2, tag_str_i, tag_str_j, i, j):
-    num_of_match_seg = 0
     len_of_match_seg = 0
     match_segment_set_ik = set()
     match_segment_set_jl = set()
@@ -359,12 +398,9 @@ def fitness_of_a_match(cnt1, cnt2, tag_str_i, tag_str_j, i, j):
             else:
                 curve_segment_jl = (cnt2[l], cnt2[0])
 
-            close_to_each_other = segment_close(curve_segment_ik, curve_segment_jl, 1)
+            print("for k = %d and l = %d" % (k, l))
 
-            if not close_to_each_other:  # segment close to each other
-                continue
-            else:
-                None
+            close_to_each_other = segment_close(curve_segment_ik, curve_segment_jl, closeness_bound_for_center_dist)
 
             x11 = curve_segment_ik[0][0][0]
             y11 = curve_segment_ik[0][0][1]
@@ -376,11 +412,18 @@ def fitness_of_a_match(cnt1, cnt2, tag_str_i, tag_str_j, i, j):
             x22 = curve_segment_jl[1][0][0]
             y22 = curve_segment_jl[1][0][1]
 
-            bary_center_ik, x_to_ang_ik = barycenter_and_x_to_angle_dict[(tag_str_i, i, k)]
-            bary_center_jl, x_to_ang_jl = barycenter_and_x_to_angle_dict[(tag_str_j, j, l)]
+            # cannot use the two lines below, because at least one curve has been rotated
+            # bary_center_ik, x_to_ang_ik = barycenter_and_x_to_angle_dict[(tag_str_i, i, k)]
+            # bary_center_jl, x_to_ang_jl = barycenter_and_x_to_angle_dict[(tag_str_j, j, l)]
 
-            # inner_ang = inner_angle_between_lines(x11, y11, x12, y12, x21, y21, x22, y22)
-            inner_ang = abs(x_to_ang_ik - x_to_ang_jl)
+            inner_ang = inner_angle_between_lines(x11, y11, x12, y12, x21, y21, x22, y22)
+            # inner_ang = abs(x_to_ang_ik - x_to_ang_jl)
+            print("inner_ang for checking closeness: ", inner_ang)
+
+            if not close_to_each_other:  # segment close to each other
+                continue
+            else:
+                None
 
             if mini_angle <= inner_ang <= 180 - mini_angle:  # angle difference tolerance < 5 degrees
                 continue
@@ -393,16 +436,22 @@ def fitness_of_a_match(cnt1, cnt2, tag_str_i, tag_str_j, i, j):
             print("having collected a map from (%d, %d) to " % (j, l), curve_segment_jl)
             # cv2.waitKey(0)
 
-            perimeter_ik = calculateDistance(x11, y11, x12, y12)
-            perimeter_jl = calculateDistance(x21, y21, x22, y22)
+            perimeter_ik = euclidean_distance(x11, y11, x12, y12)
+            perimeter_jl = euclidean_distance(x21, y21, x22, y22)
 
             print("perimeter_ik and perimeter_jl: ", round(perimeter_ik, 2), round(perimeter_jl, 2))
 
-            num_of_match_seg += 1
+    print("two matched segment sets:")
+    print(match_segment_set_ik)
+    print(match_segment_set_jl)
 
-            len_of_match_seg += perimeter_ik + perimeter_jl
+    num_of_match_seg = len(match_segment_set_ik) + len(match_segment_set_jl)
 
-            print("accu_len_of_match_seg: ", round(len_of_match_seg, 2))
+    for e in match_segment_set_ik:
+            len_of_match_seg += map_to_perimeter[(i, e)]
+
+    for e in match_segment_set_jl:
+            len_of_match_seg += map_to_perimeter[(j, e)]
 
     if len(match_segment_set_ik) >= 2:
         match_segment_list_ik = sorted(match_segment_set_ik)
@@ -412,12 +461,13 @@ def fitness_of_a_match(cnt1, cnt2, tag_str_i, tag_str_j, i, j):
             index_p = match_segment_list_ik[p]
             index_p_ = match_segment_list_ik[p+1]
             curve_segment_ik = map_to_vector[(i, index_p)]
+            # len_of_match_seg += map_to_perimeter[(i, index_p)]
             curve_segment_ik_ = map_to_vector[(i, index_p_)]
             print("two vectors: ", curve_segment_ik, curve_segment_ik_)
             v = (curve_segment_ik[1][0][0] - curve_segment_ik[0][0][0],
                  curve_segment_ik[1][0][1] - curve_segment_ik[0][0][1])
             v_ = (curve_segment_ik_[1][0][0] - curve_segment_ik_[0][0][0],
-                 curve_segment_ik_[1][0][1] - curve_segment_ik_[0][0][1])
+                  curve_segment_ik_[1][0][1] - curve_segment_ik_[0][0][1])
             print("two vectors: ", v, v_)
             theta = vector_inner_angle(v, v_)
             print("vector inner angle: ", theta)
@@ -432,6 +482,7 @@ def fitness_of_a_match(cnt1, cnt2, tag_str_i, tag_str_j, i, j):
             index_p = match_segment_list_jl[p]
             index_p_ = match_segment_list_jl[p+1]
             curve_segment_jl = map_to_vector[(j, index_p)]
+            # len_of_match_seg += map_to_perimeter[(j, index_p)]
             curve_segment_jl_ = map_to_vector[(j, index_p_)]
             print("two vectors: ", curve_segment_jl, curve_segment_jl_)
             v = (curve_segment_jl[1][0][0] - curve_segment_jl[0][0][0],
@@ -453,9 +504,12 @@ def fitness_of_a_match(cnt1, cnt2, tag_str_i, tag_str_j, i, j):
     if not match_angle_list_jl:
         match_angle_list_jl= [0]
     rotate_extend = round(sum(match_angle_list_ik) + sum(match_angle_list_jl))
+    print("num_of_match_seg_part: %d" % (alpha * num_of_match_seg))
     print("rotate_extend_part: %d" % (beta * rotate_extend))
+    print("len_of_match_seg_part: %d" % round(len_of_match_seg))
     # cv2.waitKey(0)
     match_fitness = num_of_match_seg * alpha + round(len_of_match_seg) + beta * rotate_extend
+    print("total fitness: %d" % match_fitness)
 
     return match_fitness
 
@@ -589,6 +643,16 @@ def compute_compatible_matches(m, n, overlap_tolerance, img, compatibleDirName):
 
     cv2.transform(lst_name_i[i], translate_M, translated_approx_c)
 
+    # cv2.drawContours(blank_image_1, [lst_name_i[i]], 0, (255, 0, 255),
+    #                  1)  # mind the color, I don't know how to make it colorful
+    # cv2.drawContours(blank_image_2, [lst_name_i[i]], 0, (255, 0, 255),
+    #                  1)  # mind the color, I don't know how to make it colorful
+    #
+    # cv2.drawContours(blank_image_1, [translated_approx_c], 0, (255, 0, 255),
+    #                  1)  # mind the color, I don't know how to make it colorful
+    # cv2.drawContours(blank_image_2, [translated_approx_c], 0, (255, 0, 255),
+    #                  1)  # mind the color, I don't know how to make it colorful
+
     # rotation
     rotate_M_1 = cv2.getRotationMatrix2D((original_barycenter_jl[0], original_barycenter_jl[1]), to_ang, 1)
     rotate_M_2 = cv2.getRotationMatrix2D((original_barycenter_jl[0], original_barycenter_jl[1]), to_ang + 180, 1)
@@ -632,6 +696,11 @@ def compute_compatible_matches(m, n, overlap_tolerance, img, compatibleDirName):
         flipped_to_ang = flipped_x_to_angle_jl - flipped_x_to_angle_ik
 
     # test overlap
+    print("about to check fitness of the original curve")
+    print(fitness_of_a_match(lst_name_i[i], lst_name_j[j], tag_str_i, tag_str_j, i, j))
+    print("about to check fitness of the translated curve")
+    print(fitness_of_a_match(translated_approx_c, lst_name_j[j], tag_str_i, tag_str_j, i, j))
+    print("about to check translated and rotated curve 1")
     if contour_area_overlapped(lst_name_j[j], rotated_approx_c_11, image, overlap_tolerance):
         print("***curve 1 fail in the overlap test***")
     else:
@@ -682,12 +751,16 @@ def compute_compatible_matches(m, n, overlap_tolerance, img, compatibleDirName):
             lst_name_j) + "-" + str(j) + "-" + str(l) + "-sum_fitness-" + str(
             match_fitness_1) + "_1.jpg"
 
-        # cv2.imshow(display_window_name_1, blank_image_1)
+        # if k == 7 and l == 2:
+        #     cv2.imshow(display_window_name_1, blank_image_1)
+        #     cv2.waitKey(0)
+
         cv2.imwrite("./" + compatibleDirName + "/" + output_file_name_1, blank_image_1)
         # cv2.waitKey(0)
         # cv2.destroyWindow(display_window_name_1)
 
     # test overlap
+    print("about to check translated and rotated curve 2")
     if contour_area_overlapped(lst_name_j[j], rotated_approx_c_12, image, overlap_tolerance):
         print("***curve 2 fail in the overlap test***")
     else:
@@ -1086,7 +1159,7 @@ def draw_final_image_list(p_picture, final_image_lst, flipped, img, pileDirName)
         to_draw_list = final_image_lst[k]
         print("to-draw-list:\n", to_draw_list)
 
-        blank_image = np.zeros(enlarged_by_a_factor(img.shape[0:2], 1))
+        blank_image = np.zeros(enlarged_by_a_factor(img.shape[0:2], 2))
 
         print("*************")
         for i in range(len(approx_cnts)):
@@ -1127,6 +1200,10 @@ def draw_final_image_list(p_picture, final_image_lst, flipped, img, pileDirName)
             for t in range(len(transformation_list)):
                 cv2.transform(c, transformation_list[t], c1)
                 c = c1
+
+            # translate_matrix = np.matrix([[1, 0, img.shape[0:2][0]], [0, 1, img.shape[0:2][1]]])
+            # cv2.transform(c, translate_matrix, c1)
+            # c = c1
 
             if not fragment_flipped[i]:
                 cv2.drawContours(blank_image, [c], 0, (255, 0, 255), 1)
@@ -1335,6 +1412,5 @@ if __name__ == "__main__":
     draw_final_image_list(partial_picture, final_image_list, fragment_flipped, image, pileDirName)
     print("final-image-list:\n", final_image_list)
     print("fragment flipped:\n", fragment_flipped)
-
 
 
