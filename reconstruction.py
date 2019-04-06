@@ -76,7 +76,7 @@ def initialize_approx_cnts(img):
     if FLIP_ALLOWED_MODE:
         image_containing_flipped_shape = np.zeros(enlarged_by_a_factor(img.shape[0:2], 1))
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
@@ -181,7 +181,7 @@ def initialize_approx_cnts(img):
             cY = int(M["m01"] / M["m00"])
             print("barycenter of the original approx curve: ", cX, cY)
 
-        cv2.drawContours(image, [approx_c], 0, (255, 0, 255), 2)
+        cv2.drawContours(img, [approx_c], 0, (255, 0, 255), 2)
 
         if FLIP_ALLOWED_MODE:
             cv2.drawContours(image_containing_flipped_shape, [flipped_c], 0, (255, 0, 255), 2)
@@ -189,8 +189,8 @@ def initialize_approx_cnts(img):
         print("having drawn contour %d" % i)
 
         if M["m00"] != 0:
-            cv2.circle(image, (cX, cY), 7, (255, 255, 255), -1)
-            cv2.putText(image, str(i), (cX - 20, cY - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            cv2.circle(img, (cX, cY), 7, (255, 255, 255), -1)
+            cv2.putText(img, str(i), (cX - 20, cY - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
         if FLIP_ALLOWED_MODE:
             flipped_approx_c = np.array([[[-px + 2 * cX, py]] for [[px, py]] in approx_c])
@@ -220,8 +220,8 @@ def initialize_approx_cnts(img):
     print("barycenter_and_x_to_angle_dict:\n", barycenter_and_x_to_angle_dict)
 
     # print("about to show and write image")
-    cv2.imshow("Approx Image", image)
-    cv2.imwrite("Approx input_image.jpg", image)
+    cv2.imshow("Approx Image", img)
+    cv2.imwrite("Approx input_image.jpg", img)
 
     if FLIP_ALLOWED_MODE:
         cv2.imshow("Flipped Image", image_containing_flipped_shape)
@@ -1456,6 +1456,5 @@ if __name__ == "__main__":
     draw_final_image_list(partial_picture, final_image_list, fragment_flipped, image, pileDirName)
     print("final-image-list:\n", final_image_list)
     print("fragment flipped:\n", fragment_flipped)
-
 
 
