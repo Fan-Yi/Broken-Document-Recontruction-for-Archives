@@ -76,7 +76,7 @@ def initialize_approx_cnts(img):
     if FLIP_ALLOWED_MODE:
         image_containing_flipped_shape = np.zeros(enlarged_by_a_factor(img.shape[0:2], 1))
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
@@ -134,7 +134,7 @@ def initialize_approx_cnts(img):
         approx_cnts.append(approx_c)  # index starts from zero
 
         # for testing copying
-        print("start to test copying...")
+        # print("start to test copying...")
 
         mask = np.zeros(img.shape[:2], np.uint8)
         print("having init a mask")
@@ -142,7 +142,8 @@ def initialize_approx_cnts(img):
         cv2.drawContours(mask, [approx_c], -1, 255, -1)
         print("having drawn contours")
 
-        x, y, w, h = cv2.boundingRect(approx_c)
+        # x, y, w, h = cv2.boundingRect(approx_c)
+        x, y, w, h = 0, 0, img.shape[1], img.shape[0]
         top_left_point_list.append((x, y))
 
         bit_dealt_img = cv2.bitwise_and(img, img, mask=mask)
@@ -181,7 +182,7 @@ def initialize_approx_cnts(img):
             cY = int(M["m01"] / M["m00"])
             print("barycenter of the original approx curve: ", cX, cY)
 
-        cv2.drawContours(image, [approx_c], 0, (255, 0, 255), 2)
+        cv2.drawContours(img, [approx_c], 0, (255, 0, 255), 2)
 
         if FLIP_ALLOWED_MODE:
             cv2.drawContours(image_containing_flipped_shape, [flipped_c], 0, (255, 0, 255), 2)
@@ -189,8 +190,8 @@ def initialize_approx_cnts(img):
         print("having drawn contour %d" % i)
 
         if M["m00"] != 0:
-            cv2.circle(image, (cX, cY), 7, (255, 255, 255), -1)
-            cv2.putText(image, str(i), (cX - 20, cY - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            cv2.circle(img, (cX, cY), 7, (255, 255, 255), -1)
+            cv2.putText(img, str(i), (cX - 20, cY - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
         if FLIP_ALLOWED_MODE:
             flipped_approx_c = np.array([[[-px + 2 * cX, py]] for [[px, py]] in approx_c])
@@ -220,14 +221,12 @@ def initialize_approx_cnts(img):
     print("barycenter_and_x_to_angle_dict:\n", barycenter_and_x_to_angle_dict)
 
     # print("about to show and write image")
-    cv2.imshow("Approx Image", image)
-    cv2.imwrite("Approx input_image.jpg", image)
+    cv2.imshow("Approx Image", img)
+    cv2.imwrite("Approx input_image.jpg", img)
 
     if FLIP_ALLOWED_MODE:
         cv2.imshow("Flipped Image", image_containing_flipped_shape)
         cv2.imwrite("Flipped input_image.jpg", image_containing_flipped_shape)
-
-    cv2.waitKey()
 
 
 def obtain_perimeter_and_original_and_flipped_barycenter_x_to_angle_info(cnt_list):
@@ -1234,6 +1233,9 @@ def draw_final_image_list(p_picture, final_image_lst, flipped, img, pileDirName)
                 print("its original barycenter: ", fragment_barycenter_list[i])
                 print("it is displayed in " + SINGLE_FRAGMENT_NAME_PREFIX + "_" + str(i) + ".png")
                 print("the image's original top left point is (%d, %d)" % top_left_point_list[i])
+
+                layer_img = cv2.imread(SINGLE_FRAGMENT_NAME_PREFIX + "_" + str(i) + ".png")
+                rows, cols = layer_img.shape[:2]
             else:
                 # c = np.array(flipped_approx_cnts[i])
                 c = np.array(flipped_cnts[i])
@@ -1244,15 +1246,29 @@ def draw_final_image_list(p_picture, final_image_lst, flipped, img, pileDirName)
 
             # apply transformations
             for t in range(len(transformation_list)):
-                cv2.transform(c, transformation_list[t], c1)
+                cv2.transform(c, transformation_list[t], c1) # contour transformation
+                layer_img1 = cv2.warpAffine(layer_img, transformation_list[t], (cols, rows)) # image transformation
                 c = c1
+                layer_img = layer_img1
 
             # translate_matrix = np.matrix([[1, 0, img.shape[0:2][0]], [0, 1, img.shape[0:2][1]]])
             # cv2.transform(c, translate_matrix, c1)
             # c = c1
 
+            if i == 0:
+                final_visualized_resulted_image = layer_img.copy()
+            else:
+                cv2.addWeighted(layer_img, 1.0, final_visualized_resulted_image, 1.0, 0, final_visualized_resulted_image)
+
+            # cv2.imshow("final_visualized_resulted_image", final_visualized_resulted_image)
+            # cv2.waitKey(0)
+
             if not fragment_flipped[i]:
                 cv2.drawContours(blank_image, [c], 0, (255, 0, 255), 1)
+                # print("waiting for a key press")
+                # cv2.imshow("Fragment-%d after transformed" % i, layer_img)
+                cv2.imwrite("transformed_" + SINGLE_FRAGMENT_NAME_PREFIX + "_" + str(i) + ".png", layer_img)
+                # cv2.waitKey(0)
             else:
                 cv2.drawContours(blank_image, [c], 0, (127, 255, 63), 1)
 
@@ -1261,6 +1277,7 @@ def draw_final_image_list(p_picture, final_image_lst, flipped, img, pileDirName)
         # cv2.imshow(display_window_name, blank_image)
         # cv2.imwrite(display_window_name + ".jpg", blank_image)
         cv2.imwrite(pileDirName + "/" + display_window_name + ".jpg", blank_image)
+        cv2.imwrite(pileDirName + "/" + "visualized_fragment_pile" + ".png", final_visualized_resulted_image)
         # cv2.waitKey(0)
 
 
